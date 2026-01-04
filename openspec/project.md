@@ -53,6 +53,30 @@
 - **User data ownership**: Each user owns their data (private by default) but can selectively share specific data with other users
 - **Data privacy**: User fitness and health data requires careful handling
 
+## SQL Server & Entity Framework Constraints
+
+### Multiple Cascade Paths
+SQL Server does not allow multiple cascade paths to the same table. This occurs when deleting a parent entity could cascade-delete a child through more than one path.
+
+**Example of problematic design:**
+```
+User -> WorkoutPlan (Cascade)
+User -> WorkoutSession (Cascade)
+WorkoutPlan -> WorkoutSession (Cascade or SetNull)
+```
+Deleting a User creates two paths to WorkoutSession, which SQL Server rejects.
+
+**Solution patterns:**
+1. **Use `NoAction` for secondary paths**: Keep cascade on the primary ownership path (User -> Entity), use `NoAction` on relationships between user-owned entities
+2. **Handle in application code**: When using `NoAction`, implement the cascade/set-null logic in service methods before deleting the parent
+3. **Use `Restrict`**: For relationships where deletion should be blocked if children exist
+
+**Guidelines for new entities:**
+- Each user-owned entity should have exactly ONE cascade path from User
+- Relationships between user-owned entities (e.g., WorkoutPlan -> WorkoutSession) should use `NoAction` or `Restrict`
+- When using `NoAction` where SetNull semantics are desired, nullify the FK in application code before deleting the parent
+- Document cascade behavior in DbContext with comments explaining why NoAction was chosen
+
 ## External Dependencies
 - None currently configured
 - Future considerations: Email service, push notifications, external fitness APIs

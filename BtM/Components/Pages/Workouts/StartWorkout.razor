@@ -1,0 +1,117 @@
+@page "/workout/start/{PlanId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using BtM.Data
+@using BtM.Services
+@attribute [Authorize]
+@inject WorkoutPlanService PlanService
+@inject WorkoutSessionService SessionService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Start Workout</PageTitle>
+
+@if (_plan is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <h1>Start: @_plan.Name</h1>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Workout Setup</h5>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Body Weight (lbs) - Optional</label>
+                <input type="number" @bind="_bodyWeight" class="form-control" step="0.1" placeholder="e.g., 180" style="max-width: 200px" />
+                <div class="form-text">
+                    Enter your current body weight for accurate tonnage calculation on bodyweight exercises.
+                </div>
+            </div>
+
+            @if (_hasBodyweightExercises && _bodyWeight is null)
+            {
+                <div class="alert alert-warning">
+                    This plan includes bodyweight exercises. Without a weigh-in, tonnage for those exercises will only include additional weight.
+                </div>
+            }
+
+            <h6 class="mt-4">Exercises in this plan:</h6>
+            <ul>
+                @foreach (var pe in _plan.PlanExercises.OrderBy(x => x.OrderIndex))
+                {
+                    <li>
+                        @pe.Exercise.Name - @pe.Sets sets x @pe.TargetReps reps
+                        @if (pe.Exercise.ExerciseType != ExerciseType.Standard)
+                        {
+                            <span class="badge @GetTypeBadgeClass(pe.Exercise.ExerciseType) ms-1">@pe.Exercise.ExerciseType</span>
+                        }
+                    </li>
+                }
+            </ul>
+        </div>
+        <div class="card-footer">
+            <button class="btn btn-success btn-lg me-2" @onclick="StartSessionAsync">Start Workout</button>
+            <button class="btn btn-outline-secondary" @onclick="GoBack">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid PlanId { get; set; }
+
+    private WorkoutPlan? _plan;
+    private string? _userId;
+    private string? _error;
+    private decimal? _bodyWeight;
+    private bool _hasBodyweightExercises;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId is not null)
+        {
+            _plan = await PlanService.GetPlanAsync(PlanId, _userId);
+            if (_plan is not null)
+            {
+                _hasBodyweightExercises = _plan.PlanExercises.Any(pe =>
+                    pe.Exercise.ExerciseType == ExerciseType.Bodyweight ||
+                    pe.Exercise.ExerciseType == ExerciseType.Assisted);
+            }
+        }
+    }
+
+    private void GoBack() => Navigation.NavigateTo("/plans");
+
+    private async Task StartSessionAsync()
+    {
+        var (success, error, sessionId) = await SessionService.StartSessionAsync(_userId!, PlanId, _bodyWeight);
+
+        if (success && sessionId.HasValue)
+        {
+            Navigation.NavigateTo($"/workout/{sessionId}");
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private static string GetTypeBadgeClass(ExerciseType type) => type switch
+    {
+        ExerciseType.Standard => "bg-primary",
+        ExerciseType.Bodyweight => "bg-success",
+        ExerciseType.Assisted => "bg-info",
+        _ => "bg-secondary"
+    };
+}

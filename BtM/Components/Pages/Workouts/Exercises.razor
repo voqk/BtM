@@ -1,0 +1,236 @@
+@page "/exercises"
+@using Microsoft.AspNetCore.Authorization
+@using BtM.Data
+@using BtM.Services
+@attribute [Authorize]
+@inject ExerciseService ExerciseService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Exercises</PageTitle>
+
+<h1>Exercises</h1>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_success is not null)
+{
+    <div class="alert alert-success" role="alert">@_success</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Add New Exercise</h5>
+    </div>
+    <div class="card-body">
+        <EditForm Model="_newExercise" OnValidSubmit="CreateExerciseAsync" FormName="createExercise">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label">Name</label>
+                    <InputText @bind-Value="_newExercise.Name" class="form-control" placeholder="e.g., Bench Press" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Type</label>
+                    <InputSelect @bind-Value="_newExercise.ExerciseType" class="form-select">
+                        <option value="@ExerciseType.Standard">Standard (external weight)</option>
+                        <option value="@ExerciseType.Bodyweight">Bodyweight (+ additional weight)</option>
+                        <option value="@ExerciseType.Assisted">Assisted (- assistance)</option>
+                    </InputSelect>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Add Exercise</button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@if (_exercises is null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (_exercises.Count == 0)
+{
+    <p>No exercises yet. Create one above!</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th style="width: 200px;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var exercise in _exercises)
+            {
+                <tr>
+                    @if (_editingId == exercise.Id)
+                    {
+                        <td>
+                            <input @bind="_editName" class="form-control form-control-sm" />
+                        </td>
+                        <td>
+                            <select @bind="_editType" class="form-select form-select-sm">
+                                <option value="@ExerciseType.Standard">Standard</option>
+                                <option value="@ExerciseType.Bodyweight">Bodyweight</option>
+                                <option value="@ExerciseType.Assisted">Assisted</option>
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn btn-success btn-sm me-1" @onclick="() => SaveEditAsync(exercise.Id)">Save</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="CancelEdit">Cancel</button>
+                        </td>
+                    }
+                    else
+                    {
+                        <td>@exercise.Name</td>
+                        <td>
+                            <span class="badge @GetTypeBadgeClass(exercise.ExerciseType)">
+                                @GetTypeDisplayName(exercise.ExerciseType)
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-outline-primary btn-sm me-1" @onclick="() => StartEdit(exercise)">Edit</button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteExerciseAsync(exercise.Id)">Delete</button>
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Exercise>? _exercises;
+    private string? _userId;
+    private string? _error;
+    private string? _success;
+
+    private ExerciseFormModel _newExercise = new();
+
+    private Guid? _editingId;
+    private string _editName = "";
+    private ExerciseType _editType;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId is not null)
+        {
+            await LoadExercisesAsync();
+        }
+    }
+
+    private async Task LoadExercisesAsync()
+    {
+        _exercises = await ExerciseService.GetUserExercisesAsync(_userId!);
+    }
+
+    private async Task CreateExerciseAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newExercise.Name))
+        {
+            _error = "Please enter an exercise name.";
+            return;
+        }
+
+        var (success, error) = await ExerciseService.CreateExerciseAsync(_userId!, _newExercise.Name, _newExercise.ExerciseType);
+
+        if (success)
+        {
+            _success = $"Exercise '{_newExercise.Name}' created!";
+            _error = null;
+            _newExercise = new();
+            await LoadExercisesAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private void StartEdit(Exercise exercise)
+    {
+        _editingId = exercise.Id;
+        _editName = exercise.Name;
+        _editType = exercise.ExerciseType;
+        _error = null;
+        _success = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editingId = null;
+    }
+
+    private async Task SaveEditAsync(Guid id)
+    {
+        if (string.IsNullOrWhiteSpace(_editName))
+        {
+            _error = "Exercise name cannot be empty.";
+            return;
+        }
+
+        var (success, error) = await ExerciseService.UpdateExerciseAsync(id, _userId!, _editName, _editType);
+
+        if (success)
+        {
+            _success = "Exercise updated!";
+            _error = null;
+            _editingId = null;
+            await LoadExercisesAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private async Task DeleteExerciseAsync(Guid id)
+    {
+        var (success, error) = await ExerciseService.DeleteExerciseAsync(id, _userId!);
+
+        if (success)
+        {
+            _success = "Exercise deleted.";
+            _error = null;
+            await LoadExercisesAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private static string GetTypeBadgeClass(ExerciseType type) => type switch
+    {
+        ExerciseType.Standard => "bg-primary",
+        ExerciseType.Bodyweight => "bg-success",
+        ExerciseType.Assisted => "bg-info",
+        _ => "bg-secondary"
+    };
+
+    private static string GetTypeDisplayName(ExerciseType type) => type switch
+    {
+        ExerciseType.Standard => "Standard",
+        ExerciseType.Bodyweight => "Bodyweight",
+        ExerciseType.Assisted => "Assisted",
+        _ => "Unknown"
+    };
+
+    private class ExerciseFormModel
+    {
+        public string Name { get; set; } = "";
+        public ExerciseType ExerciseType { get; set; } = ExerciseType.Standard;
+    }
+}

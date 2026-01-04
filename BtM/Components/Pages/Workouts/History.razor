@@ -1,0 +1,111 @@
+@page "/history"
+@using Microsoft.AspNetCore.Authorization
+@using BtM.Data
+@using BtM.Services
+@attribute [Authorize]
+@inject WorkoutSessionService SessionService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Workout History</PageTitle>
+
+<h1>Workout History</h1>
+
+@if (_sessions is null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (_sessions.Count == 0)
+{
+    <p>No workouts yet. <a href="/plans">Start one from your plans!</a></p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Plan</th>
+                    <th>Duration</th>
+                    <th>Sets</th>
+                    <th>Tonnage</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var session in _sessions)
+                {
+                    <tr>
+                        <td>@session.StartedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
+                        <td>@session.WorkoutPlanName</td>
+                        <td>@FormatDuration(session)</td>
+                        <td>@session.ExerciseSets.Count</td>
+                        <td>@FormatTonnage(session.TonnageLbs)</td>
+                        <td>
+                            @if (session.CompletedAt.HasValue)
+                            {
+                                <span class="badge bg-success">Completed</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-warning">In Progress</span>
+                            }
+                        </td>
+                        <td>
+                            <button class="btn btn-outline-primary btn-sm" @onclick="() => ViewSession(session.Id)">
+                                @(session.CompletedAt.HasValue ? "View" : "Continue")
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<WorkoutSession>? _sessions;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId is not null)
+        {
+            _sessions = await SessionService.GetUserSessionsAsync(_userId);
+        }
+    }
+
+    private void ViewSession(Guid sessionId)
+    {
+        Navigation.NavigateTo($"/workout/{sessionId}");
+    }
+
+    private static string FormatDuration(WorkoutSession session)
+    {
+        if (!session.CompletedAt.HasValue)
+        {
+            return "-";
+        }
+
+        var duration = session.CompletedAt.Value - session.StartedAt;
+        if (duration.TotalHours >= 1)
+        {
+            return $"{(int)duration.TotalHours}h {duration.Minutes}m";
+        }
+        return $"{(int)duration.TotalMinutes}m";
+    }
+
+    private static string FormatTonnage(decimal tonnage)
+    {
+        if (tonnage >= 2000)
+        {
+            return $"{tonnage / 2000:F2} tons";
+        }
+        return $"{tonnage:N0} lbs";
+    }
+}

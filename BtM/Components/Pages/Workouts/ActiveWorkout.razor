@@ -1,0 +1,302 @@
+@page "/workout/{SessionId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using BtM.Data
+@using BtM.Services
+@attribute [Authorize]
+@inject WorkoutSessionService SessionService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Workout</PageTitle>
+
+@if (_session is null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="mb-0">@_session.WorkoutPlanName</h1>
+            <small class="text-muted">Started @_session.StartedAt.ToLocalTime().ToString("g")</small>
+        </div>
+        <div class="text-end">
+            <div class="h3 mb-0 text-primary">@FormatTonnage(_session.TonnageLbs)</div>
+            <small class="text-muted">Total Tonnage</small>
+        </div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger alert-dismissible" role="alert">
+            @_error
+            <button type="button" class="btn-close" @onclick="() => _error = null"></button>
+        </div>
+    }
+
+    @if (_success is not null)
+    {
+        <div class="alert alert-success alert-dismissible" role="alert">
+            @_success
+            <button type="button" class="btn-close" @onclick="() => _success = null"></button>
+        </div>
+    }
+
+    @if (_session.BodyWeightLbs.HasValue)
+    {
+        <div class="mb-3">
+            <span class="badge bg-secondary">Body Weight: @_session.BodyWeightLbs lbs</span>
+        </div>
+    }
+
+    @if (_session.CompletedAt.HasValue)
+    {
+        <div class="alert alert-info">
+            Workout completed at @_session.CompletedAt.Value.ToLocalTime().ToString("g")
+        </div>
+    }
+
+    @if (_session.WorkoutPlan is not null)
+    {
+        @foreach (var pe in _session.WorkoutPlan.PlanExercises.OrderBy(x => x.OrderIndex))
+        {
+            var exerciseSets = _session.ExerciseSets.Where(s => s.ExerciseId == pe.ExerciseId).OrderBy(s => s.SetNumber).ToList();
+            var completedSets = exerciseSets.Count;
+
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>@pe.Exercise.Name</strong>
+                        <span class="badge @GetTypeBadgeClass(pe.Exercise.ExerciseType) ms-2">@pe.Exercise.ExerciseType</span>
+                    </div>
+                    <span class="badge @(completedSets >= pe.Sets ? "bg-success" : "bg-warning")">
+                        @completedSets / @pe.Sets sets
+                    </span>
+                </div>
+                <div class="card-body">
+                    @if (exerciseSets.Any())
+                    {
+                        <table class="table table-sm mb-3">
+                            <thead>
+                                <tr>
+                                    <th>Set</th>
+                                    <th>Reps</th>
+                                    <th>Weight</th>
+                                    <th>Effective</th>
+                                    <th>Tonnage</th>
+                                    @if (!_session.CompletedAt.HasValue)
+                                    {
+                                        <th></th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var set in exerciseSets)
+                                {
+                                    var effectiveWeight = WorkoutSessionService.CalculateEffectiveWeight(set.ExerciseType, set.WeightLbs, _session.BodyWeightLbs);
+                                    var setTonnage = set.Reps * effectiveWeight;
+                                    <tr>
+                                        <td>@set.SetNumber</td>
+                                        <td>@set.Reps</td>
+                                        <td>@FormatWeight(set.WeightLbs, set.ExerciseType)</td>
+                                        <td>@effectiveWeight lbs</td>
+                                        <td>@FormatTonnage(setTonnage)</td>
+                                        @if (!_session.CompletedAt.HasValue)
+                                        {
+                                            <td>
+                                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteSetAsync(set.Id)">X</button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    @if (!_session.CompletedAt.HasValue)
+                    {
+                        <div class="row g-2 align-items-end">
+                            <div class="col-auto">
+                                <label class="form-label small">Reps</label>
+                                <input type="number" @bind="_setInputs[pe.ExerciseId].Reps" class="form-control form-control-sm" min="1" style="width: 80px" />
+                            </div>
+                            <div class="col-auto">
+                                <label class="form-label small">
+                                    @(pe.Exercise.ExerciseType == ExerciseType.Assisted ? "Assistance (-)" : "Weight")
+                                </label>
+                                <input type="number" @bind="_setInputs[pe.ExerciseId].Weight" class="form-control form-control-sm" step="2.5" style="width: 100px" />
+                            </div>
+                            <div class="col-auto">
+                                <button class="btn btn-primary btn-sm" @onclick="() => LogSetAsync(pe.ExerciseId)">Log Set</button>
+                            </div>
+                            <div class="col-auto text-muted small">
+                                Target: @pe.TargetReps reps
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+
+    <div class="card mt-4">
+        <div class="card-body">
+            @if (!_session.CompletedAt.HasValue)
+            {
+                <button class="btn btn-success btn-lg me-2" @onclick="CompleteWorkoutAsync">Complete Workout</button>
+                <button class="btn btn-outline-danger" @onclick="CancelWorkoutAsync">Cancel Workout</button>
+            }
+            else
+            {
+                <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/history")'>View History</button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid SessionId { get; set; }
+
+    private WorkoutSession? _session;
+    private string? _userId;
+    private string? _error;
+    private string? _success;
+    private Dictionary<Guid, SetInput> _setInputs = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId is not null)
+        {
+            await LoadSessionAsync();
+        }
+    }
+
+    private async Task LoadSessionAsync()
+    {
+        _session = await SessionService.GetSessionAsync(SessionId, _userId!);
+
+        if (_session?.WorkoutPlan is not null)
+        {
+            foreach (var pe in _session.WorkoutPlan.PlanExercises)
+            {
+                if (!_setInputs.ContainsKey(pe.ExerciseId))
+                {
+                    _setInputs[pe.ExerciseId] = new SetInput { Reps = pe.TargetReps, Weight = 0 };
+                }
+            }
+        }
+    }
+
+    private async Task LogSetAsync(Guid exerciseId)
+    {
+        if (!_setInputs.TryGetValue(exerciseId, out var input))
+        {
+            _error = "Invalid exercise.";
+            return;
+        }
+
+        var (success, error) = await SessionService.LogSetAsync(SessionId, _userId!, exerciseId, input.Reps, input.Weight);
+
+        if (success)
+        {
+            _success = "Set logged!";
+            _error = null;
+            await LoadSessionAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private async Task DeleteSetAsync(Guid setId)
+    {
+        var (success, error) = await SessionService.DeleteSetAsync(setId, _userId!);
+
+        if (success)
+        {
+            _success = "Set deleted.";
+            _error = null;
+            await LoadSessionAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private async Task CompleteWorkoutAsync()
+    {
+        var (success, error) = await SessionService.CompleteSessionAsync(SessionId, _userId!);
+
+        if (success)
+        {
+            await LoadSessionAsync();
+            _success = "Workout completed!";
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private async Task CancelWorkoutAsync()
+    {
+        var (success, error) = await SessionService.CancelSessionAsync(SessionId, _userId!);
+
+        if (success)
+        {
+            Navigation.NavigateTo("/plans");
+        }
+        else
+        {
+            _error = error;
+        }
+    }
+
+    private static string FormatTonnage(decimal tonnage)
+    {
+        if (tonnage >= 2000)
+        {
+            return $"{tonnage / 2000:F2} tons";
+        }
+        return $"{tonnage:N0} lbs";
+    }
+
+    private static string FormatWeight(decimal weight, ExerciseType type)
+    {
+        if (type == ExerciseType.Assisted && weight < 0)
+        {
+            return $"{Math.Abs(weight)} lbs assist";
+        }
+        if (type == ExerciseType.Bodyweight && weight > 0)
+        {
+            return $"+{weight} lbs";
+        }
+        if (type == ExerciseType.Bodyweight && weight == 0)
+        {
+            return "BW only";
+        }
+        return $"{weight} lbs";
+    }
+
+    private static string GetTypeBadgeClass(ExerciseType type) => type switch
+    {
+        ExerciseType.Standard => "bg-primary",
+        ExerciseType.Bodyweight => "bg-success",
+        ExerciseType.Assisted => "bg-info",
+        _ => "bg-secondary"
+    };
+
+    private class SetInput
+    {
+        public int Reps { get; set; }
+        public decimal Weight { get; set; }
+    }
+}

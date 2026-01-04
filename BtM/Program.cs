@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using BtM.Components;
 using BtM.Components.Account;
 using BtM.Data;
+using BtM.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,6 +35,10 @@ builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.Requ
     .AddDefaultTokenProviders();
 
 builder.Services.AddSingleton<IEmailSender<ApplicationUser>, IdentityNoOpEmailSender>();
+
+builder.Services.AddScoped<ExerciseService>();
+builder.Services.AddScoped<WorkoutPlanService>();
+builder.Services.AddScoped<WorkoutSessionService>();
 
 var app = builder.Build();
 

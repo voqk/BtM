@@ -1,0 +1,160 @@
+@page "/plans"
+@using Microsoft.AspNetCore.Authorization
+@using BtM.Data
+@using BtM.Services
+@attribute [Authorize]
+@inject WorkoutPlanService PlanService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Workout Plans</PageTitle>
+
+<h1>Workout Plans</h1>
+
+@if (_error is not null)
+{
+    <div class="alert alert-danger" role="alert">@_error</div>
+}
+
+@if (_success is not null)
+{
+    <div class="alert alert-success" role="alert">@_success</div>
+}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Create New Plan</h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-8">
+                <input @bind="_newPlanName" class="form-control" placeholder="e.g., Chest Day, Leg Day" />
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-primary w-100" @onclick="CreatePlanAsync">Create Plan</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_plans is null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (_plans.Count == 0)
+{
+    <p>No workout plans yet. Create one above!</p>
+}
+else
+{
+    <div class="row">
+        @foreach (var plan in _plans)
+        {
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">@plan.Name</h5>
+                        <span class="badge bg-secondary">@plan.PlanExercises.Count exercises</span>
+                    </div>
+                    <div class="card-body">
+                        @if (plan.PlanExercises.Any())
+                        {
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var pe in plan.PlanExercises.OrderBy(x => x.OrderIndex).Take(5))
+                                {
+                                    <li>@pe.Exercise.Name - @pe.Sets sets x @pe.TargetReps reps</li>
+                                }
+                                @if (plan.PlanExercises.Count > 5)
+                                {
+                                    <li class="text-muted">...and @(plan.PlanExercises.Count - 5) more</li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0">No exercises added yet</p>
+                        }
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn btn-primary btn-sm me-1" @onclick="() => EditPlan(plan.Id)">Edit</button>
+                        <button class="btn btn-success btn-sm me-1" @onclick="() => StartWorkout(plan.Id)">Start Workout</button>
+                        <button class="btn btn-outline-danger btn-sm" @onclick="() => DeletePlanAsync(plan.Id)">Delete</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<WorkoutPlan>? _plans;
+    private string? _userId;
+    private string? _error;
+    private string? _success;
+    private string _newPlanName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId is not null)
+        {
+            await LoadPlansAsync();
+        }
+    }
+
+    private async Task LoadPlansAsync()
+    {
+        _plans = await PlanService.GetUserPlansAsync(_userId!);
+    }
+
+    private async Task CreatePlanAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newPlanName))
+        {
+            _error = "Please enter a plan name.";
+            return;
+        }
+
+        var (success, error, planId) = await PlanService.CreatePlanAsync(_userId!, _newPlanName);
+
+        if (success && planId.HasValue)
+        {
+            _newPlanName = "";
+            Navigation.NavigateTo($"/plans/{planId}");
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+
+    private void EditPlan(Guid planId)
+    {
+        Navigation.NavigateTo($"/plans/{planId}");
+    }
+
+    private void StartWorkout(Guid planId)
+    {
+        Navigation.NavigateTo($"/workout/start/{planId}");
+    }
+
+    private async Task DeletePlanAsync(Guid planId)
+    {
+        var (success, error) = await PlanService.DeletePlanAsync(planId, _userId!);
+
+        if (success)
+        {
+            _success = "Plan deleted.";
+            _error = null;
+            await LoadPlansAsync();
+        }
+        else
+        {
+            _error = error;
+            _success = null;
+        }
+    }
+}

@@ -39,6 +39,26 @@
         <AuthorizeView>
             <Authorized>
                 <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="workouts">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Workouts
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="exercises">
+                        <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Exercises
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="plans">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Plans
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="history">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> History
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
                     <NavLink class="nav-link" href="Account/Manage">
                         <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @context.User.Identity?.Name
                     </NavLink>
