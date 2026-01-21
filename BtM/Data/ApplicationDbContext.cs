@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +15,15 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // Configure Identity tables to use snake_case naming
+        builder.Entity<ApplicationUser>().ToTable("asp_net_users");
+        builder.Entity<IdentityRole>().ToTable("asp_net_roles");
+        builder.Entity<IdentityUserRole<string>>().ToTable("asp_net_user_roles");
+        builder.Entity<IdentityUserClaim<string>>().ToTable("asp_net_user_claims");
+        builder.Entity<IdentityUserLogin<string>>().ToTable("asp_net_user_logins");
+        builder.Entity<IdentityUserToken<string>>().ToTable("asp_net_user_tokens");
+        builder.Entity<IdentityRoleClaim<string>>().ToTable("asp_net_role_claims");
 
         builder.Entity<Exercise>(entity =>
         {
@@ -53,10 +63,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.HasIndex(e => new { e.WorkoutPlanId, e.OrderIndex });
         });
 
-        // SQL Server doesn't allow multiple cascade paths to the same table.
-        // User -> WorkoutSession (Cascade) and User -> WorkoutPlan -> WorkoutSession
-        // creates multiple paths. Use NoAction for the secondary path and handle
-        // WorkoutPlanId nullification in application code when deleting plans.
+        // Use NoAction for secondary cascade path to avoid complex cascade chains.
+        // WorkoutPlanId nullification is handled in application code when deleting plans.
         builder.Entity<WorkoutSession>(entity =>
         {
             entity.HasKey(e => e.Id);

@@ -8,7 +8,7 @@
 - **Blazor Server** - Interactive server-side rendering
 - **ASP.NET Identity** - Authentication and user management
 - **Entity Framework Core** - ORM and data access
-- **SQL Server** - Database
+- **PostgreSQL** - Database (with snake_case naming conventions)
 - **C# 13** - Primary language with nullable reference types enabled
 
 ## Project Conventions
@@ -53,29 +53,23 @@
 - **User data ownership**: Each user owns their data (private by default) but can selectively share specific data with other users
 - **Data privacy**: User fitness and health data requires careful handling
 
-## SQL Server & Entity Framework Constraints
+## PostgreSQL & Entity Framework Conventions
 
-### Multiple Cascade Paths
-SQL Server does not allow multiple cascade paths to the same table. This occurs when deleting a parent entity could cascade-delete a child through more than one path.
+### Snake Case Naming
+All database tables and columns use PostgreSQL-idiomatic snake_case naming:
+- Tables: `exercises`, `workout_plans`, `workout_sessions`, `exercise_sets`, `plan_exercises`
+- Identity tables: `asp_net_users`, `asp_net_roles`, `asp_net_user_roles`, etc.
+- Columns: `user_id`, `workout_plan_id`, `created_at`, `exercise_name`, etc.
 
-**Example of problematic design:**
-```
-User -> WorkoutPlan (Cascade)
-User -> WorkoutSession (Cascade)
-WorkoutPlan -> WorkoutSession (Cascade or SetNull)
-```
-Deleting a User creates two paths to WorkoutSession, which SQL Server rejects.
+This is achieved via:
+- `EFCore.NamingConventions` package with `.UseSnakeCaseNamingConvention()` in `Program.cs`
+- Explicit table name configuration for Identity entities in `ApplicationDbContext.OnModelCreating`
 
-**Solution patterns:**
-1. **Use `NoAction` for secondary paths**: Keep cascade on the primary ownership path (User -> Entity), use `NoAction` on relationships between user-owned entities
-2. **Handle in application code**: When using `NoAction`, implement the cascade/set-null logic in service methods before deleting the parent
-3. **Use `Restrict`**: For relationships where deletion should be blocked if children exist
-
-**Guidelines for new entities:**
-- Each user-owned entity should have exactly ONE cascade path from User
-- Relationships between user-owned entities (e.g., WorkoutPlan -> WorkoutSession) should use `NoAction` or `Restrict`
+### Entity Framework Guidelines
+**Cascade delete patterns:**
+- Each user-owned entity has a cascade delete from the user
+- Secondary relationships between user-owned entities use `NoAction` or `Restrict` to avoid complex cascade chains
 - When using `NoAction` where SetNull semantics are desired, nullify the FK in application code before deleting the parent
-- Document cascade behavior in DbContext with comments explaining why NoAction was chosen
 
 ## External Dependencies
 - None currently configured
