@@ -4,12 +4,12 @@
 **Build the Mountain (BtM)** is a workout, habit, and goal tracking application. The app helps users build consistent habits and track their fitness progress toward their goals.
 
 ## Tech Stack
-- **.NET 9** - Target framework
+- **.NET 10** - Target framework (LTS)
 - **Blazor Server** - Interactive server-side rendering
 - **ASP.NET Identity** - Authentication and user management
 - **Entity Framework Core** - ORM and data access
 - **PostgreSQL** - Database (with snake_case naming conventions)
-- **C# 13** - Primary language with nullable reference types enabled
+- **C# 14** - Primary language with nullable reference types enabled
 
 ## Project Conventions
 
